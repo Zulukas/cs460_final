@@ -1,5 +1,46 @@
 package main
 
+func redCheckDownLeft(checkers Checkers, src Location) bool { 
+	if !isKinged(getPiece(checkers, src)) {
+		return false
+	}
+
+	jmp := Location{int8(src.x - 1), int8(src.y + 1)}
+	dst := Location{int8(src.x - 2), int8(src.y + 2)}
+
+	return validateRedJump(checkers, src, jmp, dst)
+}
+
+func redCheckDownRight(checkers Checkers, src Location) bool {
+	if !isKinged(getPiece(checkers, src)) {
+		return false
+	}
+
+	jmp := Location{int8(src.x + 1), int8(src.y + 1)}
+	dst := Location{int8(src.x + 2), int8(src.y + 2)}
+
+	return validateRedJump(checkers, src, jmp, dst)
+}
+
+func redCheckUpLeft(checkers Checkers, src Location) bool { 
+	jmp := Location{int8(src.x - 1), int8(src.y - 1)}
+	dst := Location{int8(src.x - 2), int8(src.y - 2)}
+
+	return validateRedJump(checkers, src, jmp, dst)
+}
+
+func redCheckUpRight(checkers Checkers, src Location) bool {
+	jmp := Location{int8(src.x + 1), int8(src.y - 1)}
+	dst := Location{int8(src.x + 2), int8(src.y - 2)}
+
+	return validateRedJump(checkers, src, jmp, dst)
+}
+
+func redJumpCheck(checkers Checkers, src Location) bool {
+	return redCheckUpRight(checkers, src) || redCheckUpLeft(checkers, src) ||
+			redCheckDownRight(checkers, src) || redCheckDownLeft(checkers, src)
+}
+
 func validateRedJump(checkers Checkers, src Location, jmp Location, dst Location) bool {
 	if isValid(src) && isValid(jmp) && isValid(dst) {
 		if isRed(getPiece(checkers, src)) && isWhite(getPiece(checkers, jmp)) && isEmpty(getPiece(checkers, dst)) {
@@ -12,56 +53,17 @@ func validateRedJump(checkers Checkers, src Location, jmp Location, dst Location
 
 func getRedForcedJumps(checkers Checkers) []Location {
 	var possibleJumps []Location
+
 	//Iterate through all the pieces on the board...
 	for row := 0; row < 8; row++ {
 		for col := 0; col < 8; col++ {
 			if isRed(checkers.grid[row][col]) {
-				srcCheckLoc := Location{int8(row), int8(col)}
-				piece := getPiece(checkers, srcCheckLoc)
+				src := Location{int8(row), int8(col)}
 
-				//Is this piece kinged?
-				if isKinged(piece) {
-					//Check the four adjacents
-
-					//up-left
-					jmpCheckLoc := Location{int8(col - 1), int8(row + 1)}
-					dstCheckLoc := Location{int8(col - 2), int8(row + 2)}
-
-					if validateRedJump(checkers, srcCheckLoc, jmpCheckLoc, dstCheckLoc) {
-						possibleJumps = append(possibleJumps, srcCheckLoc)
-						continue
-					}
-
-					//up-right
-					jmpCheckLoc.x = int8(col + 1)
-					dstCheckLoc.x = int8(col + 2)
-
-					if validateRedJump(checkers, srcCheckLoc, jmpCheckLoc, dstCheckLoc) {
-						possibleJumps = append(possibleJumps, srcCheckLoc)
-						continue
-					}
+				if redJumpCheck(checkers, src) {
+					possibleJumps = append(possibleJumps, src)
 				}
-
-				//Check the two downward adjacents
-				//down-left
-
-				jmpCheckLoc := Location{int8(col - 1), int8(row - 1)}
-				dstCheckLoc := Location{int8(col - 2), int8(row - 2)}
-
-				if validateRedJump(checkers, srcCheckLoc, jmpCheckLoc, dstCheckLoc) {
-					possibleJumps = append(possibleJumps, srcCheckLoc)
-					continue
-				}
-
-				jmpCheckLoc.x = int8(col + 1)
-				dstCheckLoc.x = int8(col + 2)
-
-				if validateRedJump(checkers, srcCheckLoc, jmpCheckLoc, dstCheckLoc) {
-					possibleJumps = append(possibleJumps, srcCheckLoc)
-					continue
-					
-				}
-			}
+			}				
 		}
 	}
 

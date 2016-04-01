@@ -8,6 +8,23 @@ import (
 type Checkers struct {
 	whitePlayerTurn bool
 	grid            [8][8]Piece
+	checkers bool
+}
+
+func getGridString(checkers Checkers) string {
+	var data string
+
+	for row := 0; row < 8; row++ {
+		for col := 0; col < 8; col++ {
+			data += getPieceLetter(checkers.grid[row][col])
+
+			if !(row == 7 && col == 7) {				
+				data += ","
+			}
+		}
+	}
+
+	return data
 }
 
 func fillSpot(row int, col int, checkers *Checkers) {

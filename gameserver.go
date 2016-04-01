@@ -3,9 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"os"
-	"strconv"
+	"net"	
 	"strings"
+	"time"
 )
 
 func interpretInput(input string) (string, Location, Location) {
@@ -23,13 +23,6 @@ func interpretInput(input string) (string, Location, Location) {
 		src := interpretLocation(parts[1])
 		dst := interpretLocation(parts[2])
 
-		// display(src)
-		// display(dst)
-		fmt.Println(src)
-		fmt.Println(dst)
-
-		fmt.Println("")
-
 		return action, src, dst
 	} else {
 		if input == "quit" {
@@ -42,196 +35,199 @@ func interpretInput(input string) (string, Location, Location) {
 	}
 }
 
-func handleWhitePlayer(checkers* Checkers) {
-	reader := bufio.NewReader(os.Stdin)
-	
-	goAgain := false
-	jumper := Location{int8(-1), int8(-1)}
-
-	for {
-		if goAgain == false {
-			//Check to see if white has any available jumps...
-			jumps := getWhiteForcedJumps(*checkers)
-				
-			fmt.Print("Num jumps: " + string(strconv.Itoa(len(jumps))) + " ")
-			fmt.Print(jumps)
-			fmt.Print("White player: ")
-
-			input, _ := reader.ReadString('\n')
-			action, src, dst := interpretInput(input)
-			
-			if len(jumps) == 0 {
-				if action == "invalid" {
-					continue
-				} else if action == "move" {
-					whiteMove(checkers, src, dst)
-					return
-				} else if action == "jump" {
-					fmt.Println("No possible jumps available")
-				}
-			} else {
-				if action == "invalid" {
-					continue
-				} else if action == "move" {
-					fmt.Println("Unable to make a move if there are available jumps")
-					continue
-				} else if action == "jump" {
-					whiteJump(checkers, src, dst)					
-					jumper = dst
-					goAgain = true
-				}
-			}
-		} else {
-			if jumperHasAnotherJump(*checkers, jumper) {
-				fmt.Print("White player: ")
-				input, _ := reader.ReadString('\n')
-				action, src, dst := interpretInput(input)
-
-				if action != "jump" {
-					fmt.Println("Must make another jump after making a previous jump.")
-					continue	
-				}
-
-				if jumper == src {
-					whiteJump(checkers, src, dst)
-					jumper = dst
-				} else {
-					fmt.Println("Must make another jump with the piece that previously jumped.")
-				}
-			} else {
-				return
-			}
-		}
-
-	}
+func Write(conn net.Conn, msg string) {
+	conn.Write([]byte(msg + "\n"))
 }
 
-func handleRedPlayer(checkers* Checkers) {
-	reader := bufio.NewReader(os.Stdin)
-	
-	goAgain := false
-	jumper := Location{int8(-1), int8(-1)}
+func Read(conn net.Conn) string {
+	reader := bufio.NewReader(conn)
+
+	newmsg, _ := reader.ReadString('\n')
+	newmsg = newmsg[:len(newmsg) - 1]	//Strip the new line			
+		
+	return newmsg
+}
+
+func acceptConnections(ln net.Listener, p1* net.Conn, p2* net.Conn) {
+	white := false
+	red := false
 
 	for {
-		if goAgain == false {
-			//Check to see if white has any available jumps...
-			jumps := getRedForcedJumps(*checkers)
-				
-			fmt.Print("Num jumps: " + string(strconv.Itoa(len(jumps))) + " ")
-			fmt.Print(jumps)
-			fmt.Print("Red player: ")
+		if white == false {
+			conn, _ := ln.Accept()
+			conn.Write([]byte("White\n"))
+			*p1 = conn
+			white = true
 
-			input, _ := reader.ReadString('\n')
-			action, src, dst := interpretInput(input)
-			
-			if len(jumps) == 0 {
-				if action == "invalid" {
-					continue
-				} else if action == "move" {
-					redMove(checkers, src, dst)
-					return
-				} else if action == "jump" {
-					fmt.Println("No possible jumps available")
-				}
-			} else {
-				if action == "invalid" {
-					continue
-				} else if action == "move" {
-					fmt.Println("Unable to make a move if there are available jumps")
-					continue
-				} else if action == "jump" {
-					redJump(checkers, src, dst)
-					goAgain = true
-					jumper = dst
-				}
-			}
+			fmt.Println("White player has been registered")			
+		} else if red == false {
+			conn, _ := ln.Accept()
+			conn.Write([]byte("Red\n"))
+			*p2 = conn
+			red = true
+
+			fmt.Println("Red player has been registered")			
 		} else {
-			if jumperHasAnotherJump(*checkers, jumper) {
-				fmt.Print("Red player: ")
-				input, _ := reader.ReadString('\n')
-				action, src, dst := interpretInput(input)
-
-				if action != "jump" {
-					fmt.Println("Must make another jump after making a previous jump.")
-					continue	
-				}
-
-				if jumper == src {
-					redJump(checkers, src, dst)
-					jumper = dst
-				} else {
-					fmt.Println("Must make another jump with the piece that previously jumped.")
-				}
-			} else {
-				return
-			}
-		}
-
+			conn, _ := ln.Accept()
+			conn.Write([]byte("Game is full :(\n"))			
+		}		
 	}
 }
 
 func main() {
 	checkers := initCheckers()
 
-	for {
-		displayCheckers(checkers)
+	ln, _ := net.Listen("tcp", ":6789")
 
+	var p1 net.Conn
+	var p2 net.Conn
+
+	go acceptConnections(ln, &p1, &p2)
+
+	for (p1 == nil || p2 == nil) {
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	fmt.Println("White and Red players registered.")
+
+	var goAgain bool
+	var jumper Location
+
+	errorMsg := ""
+	error := false
+
+	for {
+		msg := ""
+
+		/* TO PLAYER */
 
 		if checkers.whitePlayerTurn {
-			handleWhitePlayer(&checkers)
+			Write(p1, getGridString(checkers))
+
+			if error {
+				Write(p1, errorMsg)
+				error = false
+			} else {
+				Write(p1, "...")
+			}
+
+			Write(p1, "White Player: ")
+			msg = Read(p1)
+
+			fmt.Println(msg)
 		} else {
-			handleRedPlayer(&checkers)
+			Write(p2, getGridString(checkers))
+
+			if error {
+				Write(p2, errorMsg)
+			} else {
+				Write(p2, "...")
+			}
+
+			Write(p2, "Red Player: ")
+			msg = Read(p2)
+			fmt.Println(msg)
 		}
 
-		// if checkers.whitePlayerTurn {
-		// 	//Check to see if white has any available jumps...
-		// 	jumps := getWhiteForcedJumps(checkers)
+		/* END TO PLAYER */
 
-		// 	//Did white make a jump already this turn and has another jump?
-		// 	if whiteAgain && !jumperHasAnotherJump(checkers, jumper) {
-		// 		whiteAgain = false
-		// 		checkers.whitePlayerTurn = false
-		// 	}
+		/* HANDLE PLAYER INPUT */
 
-		// 	fmt.Print("Num jumps: " + string(strconv.Itoa(len(jumps))) + " ")
-		// 	fmt.Print(jumps)
-		// 	fmt.Print("White player: ")
-		// 	text, _ := reader.ReadString('\n')
-		// 	action, src, dst := interpretInput(text)
+		action, src, dst := interpretInput(msg)
 
-		// 	if action == "invalid" {
-		// 		continue
-		// 	} else if action == "move" {
-		// 		whiteMove(&checkers, src, dst)
-		// 	} else if action == "jump" {
-		// 		whiteJump(&checkers, src, dst)
-		// 		whiteAgain = true
-		// 		jumper = dst
-		// 	}
-		// } else {
-		// 	jumps := getRedForcedJumps(checkers)
+		fmt.Println(action)
+		display(src)
+		fmt.Println("")
+		display(dst)
 
-		// 	if redAgain && jumperHasAnotherJump(checkers, jumper) {
-		// 		redAgain = false
-		// 		checkers.whitePlayerTurn = true
-		// 	}
+		if action == "quit" {
+			Write(p1, "quit")
+			go p1.Close()
 
-		// 	fmt.Print("Num jumps: " + string(strconv.Itoa(len(jumps))) + " ")
-		// 	fmt.Print("Red player: ")
+			Write(p2, "quit")
+			go p2.Close()
 
-		// 	text, _ := reader.ReadString('\n')
-		// 	action, src, dst := interpretInput(text)
+			break
+		}
 
-		// 	if action == "invalid" {
-		// 		continue
-		// 	} else if action == "move" {
-		// 		redMove(&checkers, src, dst)
-		// 	} else if action == "jump" {
-		// 		redJump(&checkers, src, dst)
-		// 		redAgain = true
-		// 		jumper = dst
-		// 	}
-		// }
+		if goAgain == false {
+			var jumps []Location
+
+			if checkers.whitePlayerTurn {
+				jumps = getWhiteForcedJumps(checkers)
+				fmt.Println("White player has " + string(len(jumps)) + " jumps")
+			} else {
+				jumps = getRedForcedJumps(checkers)
+				fmt.Println("Red player has " + string(len(jumps)) + " jumps")
+			}
+
+			if action == "invalid" {
+				errorMsg = "Invalid action, please try again."
+				error = true
+			} else if action == "move" {
+				if len(jumps) == 0 {
+					if checkers.whitePlayerTurn {
+						if !whiteMove(&checkers, src, dst) {
+							errorMsg = "Invalid move, please try again."
+							error = true
+						}
+					} else {
+						if !redMove(&checkers, src, dst) {
+							errorMsg = "Invalid move, please try again."
+							error = true
+						}
+					}
+				} else {
+						errorMsg = "Must make a jump if a jump is available."
+						error = true
+				}
+			} else if action == "jump" {
+				if checkers.whitePlayerTurn {
+					if whiteJump(&checkers, src, dst) {
+						goAgain = true
+						jumper = dst
+					} else {
+						errorMsg = "Invalid jump, please try again."
+						error = true
+					}
+				} else {
+					if redJump(&checkers, src, dst) {
+						goAgain = true					
+						jumper = dst
+					} else {
+						errorMsg = "Invalid jump, please try again."
+						error = true
+					}
+				}
+			}	
+		} else {
+			if jumperHasAnotherJump(checkers, jumper) {
+				if action != "jump" {
+					errorMsg =  "Must make another jump after jumping."
+					error = true
+				} else {
+					if checkers.whitePlayerTurn {
+						if whiteJump(&checkers, src, dst) {
+							jumper = dst
+						} else {
+							errorMsg = "Invalid jump, please try again."
+							error = true
+						}
+					} else {
+						if redJump(&checkers, src, dst) {
+							jumper = dst
+						} else {
+							errorMsg = "Invalid jump, please try again."
+							error = true
+						}
+					}
+				}
+			} else {
+				goAgain = false
+				checkers.whitePlayerTurn = !checkers.whitePlayerTurn
+			}
+		}
+
 	}
 }
 
